@@ -61,12 +61,13 @@ class _HubScreenState extends State<HubScreen> {
       for (var task in tasks) {
         final folderName = task.name.toUpperCase();
         if (usageData.containsKey(folderName)) {
-            final bytes = usageData[folderName]!;
-            if (bytes > 1024 * 1024 * 1024) {
-              task.diskSize = "${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB";
-            } else {
-              task.diskSize = "${(bytes / (1024 * 1024)).toStringAsFixed(0)} MB";
-            }
+          final bytes = usageData[folderName]!;
+          if (bytes > 1024 * 1024 * 1024) {
+            task.diskSize =
+                "${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB";
+          } else {
+            task.diskSize = "${(bytes / (1024 * 1024)).toStringAsFixed(0)} MB";
+          }
         }
       }
     });
@@ -82,8 +83,10 @@ class _HubScreenState extends State<HubScreen> {
         // Agora o Blender está na raiz da pasta BLENDER, simplificando.
         final taskDir = p.join(rootPath, task.name.toUpperCase());
         final exe = await _syncService.findExecutable(
-          taskDir, 
-          Platform.isWindows ? (task.executablePath ?? "") : (task.executablePath?.replaceAll(".exe", "") ?? "")
+          taskDir,
+          Platform.isWindows
+              ? (task.executablePath ?? "")
+              : (task.executablePath?.replaceAll(".exe", "") ?? ""),
         );
         installed = exe != null;
       }
@@ -132,9 +135,13 @@ class _HubScreenState extends State<HubScreen> {
         iconPath: "assets/images/godot.png",
         color: const Color(0xFF38BDF8),
         downloadUrl: getUrl(
-            "https://github.com/godotengine/godot/releases/download/4.6-stable/Godot_v4.6-stable_win64.exe.zip",
-            "https://github.com/godotengine/godot/releases/download/4.6-stable/Godot_v4.6-stable_linux.x86_64.zip"),
-        executablePath: getExe("Godot_v4.6-stable_win64.exe", "Godot_v4.6-stable_linux.x86_64"),
+          "https://github.com/godotengine/godot/releases/download/4.6-stable/Godot_v4.6-stable_win64.exe.zip",
+          "https://github.com/godotengine/godot/releases/download/4.6-stable/Godot_v4.6-stable_linux.x86_64.zip",
+        ),
+        executablePath: getExe(
+          "Godot_v4.6-stable_win64.exe",
+          "Godot_v4.6-stable_linux.x86_64",
+        ),
         version: "4.6 Stable",
       ),
       SDKTask(
@@ -143,10 +150,11 @@ class _HubScreenState extends State<HubScreen> {
         iconPath: "assets/images/BLOCK_icon.png",
         color: const Color(0xFFEF4444), // Block Red
         downloadUrl: getUrl(
-            "https://github.com/Amana-Games/BLOCK/releases/download/2026.2/BLOCK_Windows.zip",
-            "https://github.com/Amana-Games/BLOCK/releases/download/2026.2/BLOCK_Linux.zip"),
+          "https://github.com/Amana-Games/BLOCK/releases/download/v2026.2.3/BLOCK_Windows.zip",
+          "https://github.com/Amana-Games/BLOCK/releases/download/v2026.2.3/BLOCK_Linux.zip",
+        ),
         executablePath: getExe("BLOCK.exe", "BLOCK"),
-        version: "2026.2",
+        version: "2026.2.3",
       ),
       SDKTask(
         name: "TRENCH",
@@ -154,10 +162,11 @@ class _HubScreenState extends State<HubScreen> {
         iconPath: "assets/images/TRENCH_icon.png",
         color: const Color(0xFFF97316), // Trench Orange
         downloadUrl: getUrl(
-            "https://github.com/Amana-Games/TRENCH/releases/download/v2026.2.3/TrenchBroom-Win64-AMD64-v2026.2.3-Release.zip",
-            "https://github.com/Amana-Games/TRENCH/releases/download/v2026.2.3/TrenchBroom-Linux-x86_64-v2026.2.3-Release.zip"),
+          "https://github.com/Amana-Games/TRENCH/releases/download/v2026.2.7/TRENCH-Win64-AMD64-v2026.2.5-Release.zip",
+          "https://github.com/Amana-Games/TRENCH/releases/download/v2026.2.7/TRENCH-Linux-x86_64-v2026.2.5-Release.zip",
+        ),
         executablePath: getExe("TRENCH.exe", "TRENCH.AppImage"),
-        version: "2026.2.3",
+        version: "2026.2.7",
       ),
       SDKTask(
         name: "BLENDER",
@@ -165,8 +174,9 @@ class _HubScreenState extends State<HubScreen> {
         iconPath: "assets/images/blender.png",
         color: const Color(0xFFEA580C), // Blender Deep Orange
         downloadUrl: getUrl(
-            "https://download.blender.org/release/Blender4.5/blender-4.5.6-windows-x64.zip",
-            "https://download.blender.org/release/Blender4.5/blender-4.5.6-linux-x64.tar.xz"),
+          "https://download.blender.org/release/Blender4.5/blender-4.5.6-windows-x64.zip",
+          "https://download.blender.org/release/Blender4.5/blender-4.5.6-linux-x64.tar.xz",
+        ),
         executablePath: getExe("blender.exe", "blender"),
         version: "4.5.6 LTS",
       ),
@@ -186,7 +196,9 @@ class _HubScreenState extends State<HubScreen> {
         // Dependency Check for Ainimonia
         final dependencies = tasks.where((t) => t.name != "Ainimonia");
         if (dependencies.any((t) => !t.isInstalled)) {
-          _showError("Cannot launch Ainimonia: Some tools (Godot, Blender, etc.) are missing.");
+          _showError(
+            "Cannot launch Ainimonia: Some tools (Godot, Blender, etc.) are missing.",
+          );
           return;
         }
 
@@ -216,7 +228,11 @@ class _HubScreenState extends State<HubScreen> {
             .toList();
         await _syncService.launchTool(
           godotExePath,
-          args: ["--path", p.relative(projectDir, from: p.dirname(godotExePath)), ...cleanArgs],
+          args: [
+            "--path",
+            p.relative(projectDir, from: p.dirname(godotExePath)),
+            ...cleanArgs,
+          ],
         );
       }
       // 2. GODOT Task -> Launches EDITOR for Ainimonia
@@ -231,17 +247,21 @@ class _HubScreenState extends State<HubScreen> {
         // Launch Editor: --path "Ainimonia" -e
         await _syncService.launchTool(
           godotExePath,
-          args: ["--path", p.relative(projectDir, from: p.dirname(godotExePath)), "-e"],
+          args: [
+            "--path",
+            p.relative(projectDir, from: p.dirname(godotExePath)),
+            "-e",
+          ],
         );
       }
       // 3. BLENDER Task
       else if (task.name == "BLENDER") {
         final blenderDir = p.join(rootPath, "BLENDER");
         final blenderExe = await _syncService.findExecutable(
-          blenderDir, 
-          Platform.isWindows ? "blender.exe" : "blender"
+          blenderDir,
+          Platform.isWindows ? "blender.exe" : "blender",
         );
-        
+
         if (blenderExe == null) {
           throw "Blender executable not found in $blenderDir";
         }
@@ -299,23 +319,23 @@ class _HubScreenState extends State<HubScreen> {
           task.isCompleted = true;
         });
       }
-      
+
       // Finalize Configuration (Injection)
       setState(() {
         for (var task in tasks) {
-           if (task.name == "GODOT" || task.name == "BLENDER") {
-              task.statusMessage = "Configuring Portability...";
-           }
+          if (task.name == "GODOT" || task.name == "BLENDER") {
+            task.statusMessage = "Configuring Portability...";
+          }
         }
       });
       await _syncService.finalizeStudioConfiguration(rootPath);
-      
+
       setState(() {
         for (var task in tasks) {
           task.statusMessage = "Ready";
         }
       });
-      
+
       // Re-check installation status
       await _checkInstallationStatus();
       _updateDiskUsage();
@@ -438,9 +458,11 @@ class _HubScreenState extends State<HubScreen> {
                   Expanded(
                     child: _activeTab == 0
                         ? StudioTab(
-                            tasks: tasks, 
+                            tasks: tasks,
                             onLaunch: _launchApp,
-                            dependenciesReady: tasks.where((t) => t.name != "Ainimonia").every((t) => t.isInstalled),
+                            dependenciesReady: tasks
+                                .where((t) => t.name != "Ainimonia")
+                                .every((t) => t.isInstalled),
                           )
                         : _activeTab == 1
                         ? MaintenanceTab(
