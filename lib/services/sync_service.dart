@@ -49,6 +49,12 @@ class SyncService {
       }
     }
     if (File(zipPath).existsSync()) File(zipPath).deleteSync();
+
+    // Linux: Auto-apply permissions after extraction
+    if (Platform.isLinux) {
+      await Process.run('chmod', ['-R', '+x', destinationDir.path]);
+    }
+
     onStatus("Ready");
   }
 
@@ -73,7 +79,7 @@ class SyncService {
     onStatus("Ready");
   }
 
-  // Lança o executável com Abordagem Híbrida (Shell Nativo vs Processo Detachado)
+  // Lança o executável com Abordagem Híbrida, Correção para Electron e Permissões Linux
   Future<void> launchTool(
     String fullPath, {
     List<String> args = const [],
@@ -90,9 +96,30 @@ class SyncService {
     print("[SyncService] CWD: $workingDir");
 
     try {
-      // ESTRATÉGIA 1: Apps Simples (BLOCK, TRENCH) -> Sem argumentos
-      // Usamos url_launcher para invocar o Shell Nativo do Windows.
-      // Isso resolve automaticamente o Working Directory e previne janelas de CMD/Console.
+      // 0. ESTRATÉGIA ESPECÍFICA: Linux (Permission Check)
+      // Garante que o executável tenha permissão antes de tentar abrir.
+      if (Platform.isLinux) {
+        print("[SyncService] Linux detectado. Aplicando chmod +x...");
+        await Process.run('chmod', ['+x', cleanPath]);
+      }
+
+      // 1. ESTRATÉGIA ESPECÍFICA: BLOCK (Electron/Chromium Workaround)
+      // O Electron falha se não tiver as flags de sandbox e se não rodar no shell (Windows).
+      // Usamos Process.start mesmo sem argumentos extras para injetar bypass.
+      if (fileName.toUpperCase().contains("BLOCK")) {
+        print("[SyncService] Detectado App Electron (BLOCK). Injetando flags de bypass...");
+        await Process.start(
+          cleanPath,
+          ['--no-sandbox', '--disable-gpu-compositing', ...args],
+          workingDirectory: workingDir,
+          runInShell: Platform.isWindows, // Vital para Electron no Windows
+          mode: ProcessStartMode.detached,
+        );
+        return;
+      }
+
+      // 2. ESTRATÉGIA PARA APPS SIMPLES (TRENCH, etc) -> Sem argumentos
+      // Usamos url_launcher para invocar o Shell Nativo.
       if (args.isEmpty) {
         print("[SyncService] Using url_launcher (Shell Execute)...");
         final uri = Uri.file(cleanPath);
@@ -102,16 +129,14 @@ class SyncService {
         return;
       }
 
-      // ESTRATÉGIA 2: Apps Complexos (GODOT) -> Com argumentos
-      // Usamos Process.start para ter controle exato dos argumentos passed.
-      // runInShell: false previne a janela preta do CMD.
-      // mode: detached garante que o processo sobreviva ao fechamento do Hub.
+      // 3. ESTRATÉGIA PARA APPS COMPLEXOS (GODOT) -> Com argumentos
+      // runInShell: false previne a janela preta do CMD no Windows.
       print("[SyncService] Using Process.start (Detached)...");
       await Process.start(
         cleanPath,
         args,
         workingDirectory: workingDir,
-        runInShell: false, // Vital para evitar janela de console no Godot
+        runInShell: false,
         mode: ProcessStartMode.detached,
       );
     } catch (e) {

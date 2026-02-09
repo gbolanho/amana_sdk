@@ -88,7 +88,7 @@ class _HubScreenState extends State<HubScreen> {
         downloadUrl: isWin
             ? "https://github.com/Amana-Games/BLOCK/releases/download/2026.2/BLOCK_Windows.zip"
             : "https://github.com/Amana-Games/BLOCK/releases/download/2026.2/BLOCK_Linux.zip",
-        executablePath: isWin ? "BLOCK.exe" : "BLOCK.AppImage",
+        executablePath: isWin ? "BLOCK.exe" : "BLOCK",
       ),
       SDKTask(
         name: "TRENCH",
@@ -98,7 +98,7 @@ class _HubScreenState extends State<HubScreen> {
         downloadUrl: isWin
             ? "https://github.com/Amana-Games/TRENCH/releases/download/v2026.2.3/TrenchBroom-Win64-AMD64-v2026.2.3-Release.zip"
             : "https://github.com/Amana-Games/TRENCH/releases/download/v2026.2.3/TrenchBroom-Linux-x86_64-v2026.2.3-Release.zip",
-        executablePath: isWin ? "TRENCH.exe" : "trench",
+        executablePath: isWin ? "TRENCH.exe" : "TRENCH.AppImage",
       ),
     ];
   }
