@@ -50,12 +50,163 @@ class SyncService {
     }
     if (File(zipPath).existsSync()) File(zipPath).deleteSync();
 
+    // Flattening: Se houver apenas uma pasta dentro e nada mais, movemos tudo para cima.
+    await _flattenDirectory(destinationDir);
+
     // Linux: Auto-apply permissions after extraction
     if (Platform.isLinux) {
       await Process.run('chmod', ['-R', '+x', destinationDir.path]);
     }
 
+    // Godot Self-Contained Mode
+    if (upperFolder == "GODOT") {
+      final scFile = File(p.join(destinationDir.path, "._sc_"));
+      if (!scFile.existsSync()) {
+        scFile.createSync();
+        print("[SyncService] Godot Self-Contained mode enabled (._sc_ created).");
+      }
+    }
+
+    // Blender Portability: Create config folder
+    if (upperFolder == "BLENDER") {
+      final configDir = Directory(p.join(destinationDir.path, "config"));
+      if (!configDir.existsSync()) {
+        configDir.createSync(recursive: true);
+        print("[SyncService] Blender config folder created at ${configDir.path}");
+      }
+    }
+
     onStatus("Ready");
+  }
+
+  // Verifica se a extração criou uma subpasta desnecessária e move o conteúdo para cima
+  Future<void> _flattenDirectory(Directory dir) async {
+    final entities = dir.listSync();
+    if (entities.length == 1 && entities.first is Directory) {
+      final subDir = entities.first as Directory;
+      print("[SyncService] Flattening: Moving contents of ${p.basename(subDir.path)} to ${p.basename(dir.path)}");
+      
+      final subEntities = subDir.listSync();
+      for (final entity in subEntities) {
+        final newPath = p.join(dir.path, p.basename(entity.path));
+        if (entity is File) {
+          entity.renameSync(newPath);
+        } else if (entity is Directory) {
+          entity.renameSync(newPath);
+        }
+      }
+      subDir.deleteSync(recursive: true);
+    }
+  }
+
+  // Deleta tudo exceto as pastas de configuração (SC) para re-download seguro
+  Future<void> cleanForRedownload(String folderPath, String folderName) async {
+    final dir = Directory(folderPath);
+    if (!dir.existsSync()) return;
+
+    final preserves = ['config', 'data', 'editor_data', '._sc_'];
+    
+    final entities = dir.listSync();
+    for (final entity in entities) {
+      final name = p.basename(entity.path);
+      if (preserves.contains(name)) continue;
+
+      try {
+        if (entity is File) {
+          entity.deleteSync();
+        } else if (entity is Directory) {
+          entity.deleteSync(recursive: true);
+        }
+      } catch (e) {
+        print("[SyncService] Could not delete $name: $e");
+      }
+    }
+  }
+
+  // Localiza o executável real dentro de uma pasta (útil para pastas portable com subdiretórios)
+  Future<String?> findExecutable(String folderPath, String pattern) async {
+    final dir = Directory(folderPath);
+    if (!dir.existsSync()) return null;
+
+    // Check root first for efficiency (especially for flattened folders)
+    final rootFile = File(p.join(folderPath, pattern));
+    if (rootFile.existsSync()) return rootFile.path;
+
+    // Follow up with recursive search if not found at root
+    try {
+      await for (final entity in dir.list(recursive: true, followLinks: false)) {
+        if (entity is File) {
+          final name = p.basename(entity.path);
+          if (name.toLowerCase() == pattern.toLowerCase()) {
+            return entity.path;
+          }
+        }
+      }
+    } catch (e) {
+      print("[SyncService] Error during executable search: $e");
+    }
+    return null;
+  }
+
+  // Injeta o caminho do Blender nas configurações da Godot
+  Future<void> finalizeStudioConfiguration(String rootPath) async {
+    try {
+      final godotDir = p.join(rootPath, "GODOT");
+      final blenderDir = p.join(rootPath, "BLENDER");
+      
+      // 1. Achar o executável do Blender
+      final blenderExe = await findExecutable(
+        blenderDir, 
+        Platform.isWindows ? "blender.exe" : "blender"
+      );
+      
+      if (blenderExe == null) {
+        print("[SyncService] Blender executable not found for configuration injection.");
+        return;
+      }
+
+      // 2. Localizar (ou criar) o arquivo de configurações da Godot (modo SC usa editor_data/)
+      final configDir = Directory(p.join(godotDir, "editor_data"));
+      if (!configDir.existsSync()) configDir.createSync(recursive: true);
+      
+      // Regra de Injeção: editor_settings-4.x.tres
+      File configFile = File(p.join(configDir.path, "editor_settings-4.x.tres"));
+      
+      String content = "";
+
+      if (configFile.existsSync()) {
+        content = await configFile.readAsString();
+      } else {
+        // Template base se não existir
+        content = '[gd_resource type="EditorSettings" format=3]\n\n[resource]\n';
+      }
+
+      // 3. Injetar ou atualizar o caminho do Blender
+      // Normaliza o caminho para formato Godot (slashes) e usa canonicalize
+      final normalizedBlenderPath = p.canonicalize(blenderExe).replaceAll("\\", "/");
+      final blenderSetting = 'filesystem/import/blender/blender_path = "$normalizedBlenderPath"';
+
+      if (content.contains('filesystem/import/blender/blender_path')) {
+        // Substitui a linha existente
+        content = content.replaceFirst(
+          RegExp(r'filesystem/import/blender/blender_path = ".*"'), 
+          blenderSetting
+        );
+      } else {
+        // Adiciona ao final da seção [resource]
+        if (content.contains('[resource]')) {
+           content = content.replaceFirst('[resource]', '[resource]\n$blenderSetting');
+        } else {
+           content += "\n[resource]\n$blenderSetting";
+        }
+      }
+
+      await configFile.writeAsString(content);
+      print("[SyncService] Blender path injected into Godot settings (${p.basename(configFile.path)}): $normalizedBlenderPath");
+
+    } catch (e) {
+      print("[SyncService] Error finalizing configuration: $e");
+    }
   }
 
   Future<void> syncGit({
@@ -97,29 +248,49 @@ class SyncService {
 
     try {
       // 0. ESTRATÉGIA ESPECÍFICA: Linux (Permission Check)
-      // Garante que o executável tenha permissão antes de tentar abrir.
       if (Platform.isLinux) {
         print("[SyncService] Linux detectado. Aplicando chmod +x...");
         await Process.run('chmod', ['+x', cleanPath]);
       }
 
-      // 1. ESTRATÉGIA ESPECÍFICA: BLOCK (Electron/Chromium Workaround)
-      // O Electron falha se não tiver as flags de sandbox e se não rodar no shell (Windows).
-      // Usamos Process.start mesmo sem argumentos extras para injetar bypass.
+      // 1. ESTRATÉGIA ESPECÍFICA: BLOCK (Electron Portability)
       if (fileName.toUpperCase().contains("BLOCK")) {
-        print("[SyncService] Detectado App Electron (BLOCK). Injetando flags de bypass...");
+        print("[SyncService] Detectado App Electron (BLOCK). Injetando portability data dir...");
         await Process.start(
           cleanPath,
-          ['--no-sandbox', '--disable-gpu-compositing', ...args],
+          ['--user-data-dir=./data', '--no-sandbox', '--disable-gpu-compositing', ...args],
           workingDirectory: workingDir,
-          runInShell: Platform.isWindows, // Vital para Electron no Windows
+          runInShell: Platform.isWindows,
           mode: ProcessStartMode.detached,
         );
         return;
       }
 
-      // 2. ESTRATÉGIA PARA APPS SIMPLES (TRENCH, etc) -> Sem argumentos
-      // Usamos url_launcher para invocar o Shell Nativo.
+      // 2. ESTRATÉGIA ESPECÍFICA: TRENCH (Environment Isolation)
+      if (fileName.toUpperCase().contains("TRENCH")) {
+        print("[SyncService] Detectado TRENCH. Isolando variáveis de ambiente...");
+        final dataDir = p.join(workingDir, "data");
+        if (!Directory(dataDir).existsSync()) Directory(dataDir).createSync(recursive: true);
+
+        final env = Map<String, String>.from(Platform.environment);
+        if (Platform.isWindows) {
+          env['APPDATA'] = dataDir;
+        } else {
+          env['HOME'] = dataDir;
+        }
+
+        await Process.start(
+          cleanPath,
+          args,
+          workingDirectory: workingDir,
+          environment: env,
+          runInShell: Platform.isWindows,
+          mode: ProcessStartMode.detached,
+        );
+        return;
+      }
+
+      // 3. ESTRATÉGIA PARA APPS SIMPLES (Sem argumentos)
       if (args.isEmpty) {
         print("[SyncService] Using url_launcher (Shell Execute)...");
         final uri = Uri.file(cleanPath);
@@ -129,8 +300,7 @@ class SyncService {
         return;
       }
 
-      // 3. ESTRATÉGIA PARA APPS COMPLEXOS (GODOT) -> Com argumentos
-      // runInShell: false previne a janela preta do CMD no Windows.
+      // 4. ESTRATÉGIA PARA APPS COMPLEXOS (GODOT, etc)
       print("[SyncService] Using Process.start (Detached)...");
       await Process.start(
         cleanPath,
@@ -150,7 +320,7 @@ class SyncService {
     final breakdown = <String, int>{};
     int total = 0;
 
-    final folders = ['Ainimonia', 'GODOT', 'TRENCH', 'BLOCK'];
+    final folders = ['Ainimonia', 'GODOT', 'TRENCH', 'BLOCK', 'BLENDER'];
 
     for (final folder in folders) {
       final dir = Directory(p.join(rootPath, folder));

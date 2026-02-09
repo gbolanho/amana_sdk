@@ -21,6 +21,9 @@ class Localization {
       'desc_godot': 'Godot 4.6 Stable - Our engine of choice.',
       'desc_trench': 'Trenchbroom Fork + LiveSync bridge.',
       'desc_block': 'Blockbench Fork + Entity Templates.',
+      'desc_blender': 'Blender 4.5.6 LTS - Modeling, sculpting and animation',
+      'studio_top_category': 'MAIN',
+      'studio_tools_category': 'TOOLS',
     },
     'pt': {
       'hub_title': 'AMANA SDK',
@@ -41,6 +44,9 @@ class Localization {
       'desc_godot': 'Godot 4.6 Stable - Nossa engine favorita.',
       'desc_trench': 'Fork do Trenchbroom + Conector LiveSync.',
       'desc_block': 'Fork do Blockbench + Templates de Entidade.',
+      'desc_blender': 'Blender 4.5.6 LTS - Modelagem, escultura e animação',
+      'studio_top_category': 'PRINCIPAIS',
+      'studio_tools_category': 'FERRAMENTAS',
     },
   };
 

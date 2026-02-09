@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 import '../../models/sdk_task.dart';
 import '../../services/localization_service.dart';
 import '../widgets/task_row.dart';
@@ -9,6 +10,7 @@ class MaintenanceTab extends StatelessWidget {
   final String rootPath;
   final VoidCallback onSelectPath;
   final VoidCallback onSync;
+  final Function(SDKTask) onSyncTask;
   final bool isSyncing;
   final bool isTokenValid;
 
@@ -18,6 +20,7 @@ class MaintenanceTab extends StatelessWidget {
     required this.rootPath,
     required this.onSelectPath,
     required this.onSync,
+    required this.onSyncTask,
     required this.isSyncing,
     required this.isTokenValid,
   });
@@ -32,7 +35,14 @@ class MaintenanceTab extends StatelessWidget {
           child: ListView.builder(
             itemCount: tasks.length,
             itemBuilder: (context, index) {
-              return TaskRow(task: tasks[index]);
+              final task = tasks[index];
+              final taskPath = p.join(rootPath, task.name.toUpperCase());
+              return TaskRow(
+                task: task,
+                fullPath: taskPath,
+                onSync: () => onSyncTask(task),
+                isGlobalSyncing: isSyncing,
+              );
             },
           ),
         ),
@@ -43,7 +53,7 @@ class MaintenanceTab extends StatelessWidget {
           child: ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: (isTokenValid && !isSyncing)
-                  ? const Color(0xFF38BDF8)
+                  ? Colors.white
                   : Colors.white10,
               foregroundColor: Colors.black,
               shape: RoundedRectangleBorder(

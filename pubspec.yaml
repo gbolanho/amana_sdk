@@ -77,6 +77,8 @@ flutter:
     - assets/images/TRENCH_icon.png
     - assets/images/BLOCK_icon.png
     - assets/images/gameicon.png
+    - assets/images/blender.png
+
 
 
   # An image asset can refer to one or more resolution-specific "variants", see

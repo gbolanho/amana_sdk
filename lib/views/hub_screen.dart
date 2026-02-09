@@ -49,65 +49,147 @@ class _HubScreenState extends State<HubScreen> {
       _tokenController.text = prefs.getString('github_token') ?? "";
     });
     _updateDiskUsage();
+    await _checkInstallationStatus();
+    _autoRedirectIfNeeded();
   }
 
   void _updateDiskUsage() async {
     final data = await _syncService.getDiskUsageBreakdown(rootPath);
     setState(() {
       usageData = data;
+      // Populate individual task disk size
+      for (var task in tasks) {
+        final folderName = task.name.toUpperCase();
+        if (usageData.containsKey(folderName)) {
+            final bytes = usageData[folderName]!;
+            if (bytes > 1024 * 1024 * 1024) {
+              task.diskSize = "${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB";
+            } else {
+              task.diskSize = "${(bytes / (1024 * 1024)).toStringAsFixed(0)} MB";
+            }
+        }
+      }
     });
+  }
+
+  Future<void> _checkInstallationStatus() async {
+    for (var task in tasks) {
+      bool installed = false;
+      if (task.name == "Ainimonia") {
+        final projectDir = p.join(rootPath, "Ainimonia");
+        installed = Directory(p.join(projectDir, ".git")).existsSync();
+      } else {
+        // Agora o Blender está na raiz da pasta BLENDER, simplificando.
+        final taskDir = p.join(rootPath, task.name.toUpperCase());
+        final exe = await _syncService.findExecutable(
+          taskDir, 
+          Platform.isWindows ? (task.executablePath ?? "") : (task.executablePath?.replaceAll(".exe", "") ?? "")
+        );
+        installed = exe != null;
+      }
+      setState(() {
+        task.isInstalled = installed;
+        task.isCompleted = installed;
+      });
+    }
+  }
+
+  void _autoRedirectIfNeeded() {
+    // If any essential tool is missing, redirect to Maintenance
+    bool allReady = tasks.every((t) => t.isInstalled);
+    if (!allReady && _activeTab == 0) {
+      setState(() => _activeTab = 1);
+      print("[HubScreen] Some tools missing. Redirecting to Maintenance...");
+    }
+  }
+
+  String _extractVersion(String? url) {
+    if (url == null) return "Stable";
+    // Regex based on common patterns in the URLs provided
+    final reg = RegExp(r'(\d+\.\d+[\.\d]*)');
+    final match = reg.firstMatch(url);
+    return match?.group(0) ?? "Latest";
   }
 
   void _initializeTasks() {
     bool isWin = Platform.isWindows;
+    // Helper to get urls based on OS
+    String? getUrl(String win, String linux) => isWin ? win : linux;
+    String? getExe(String win, String linux) => isWin ? win : linux;
+
     tasks = [
       SDKTask(
         name: "Ainimonia",
         descriptionKey: "desc_project",
         iconPath: "assets/images/gameicon.png",
-        color: Colors.purpleAccent,
+        color: Colors.white,
         repoUrl: "https://github.com/Amana-Games/Ainimonia.git",
+        version: "Main",
       ),
       SDKTask(
         name: "GODOT",
         descriptionKey: "desc_godot",
         iconPath: "assets/images/godot.png",
         color: const Color(0xFF38BDF8),
-        downloadUrl: isWin
-            ? "https://github.com/godotengine/godot/releases/download/4.6-stable/Godot_v4.6-stable_win64.exe.zip"
-            : "https://github.com/godotengine/godot/releases/download/4.6-stable/Godot_v4.6-stable_linux.x86_64.zip",
-        executablePath: isWin
-            ? "Godot_v4.6-stable_win64.exe"
-            : "Godot_v4.6-stable_linux.x86_64",
+        downloadUrl: getUrl(
+            "https://github.com/godotengine/godot/releases/download/4.6-stable/Godot_v4.6-stable_win64.exe.zip",
+            "https://github.com/godotengine/godot/releases/download/4.6-stable/Godot_v4.6-stable_linux.x86_64.zip"),
+        executablePath: getExe("Godot_v4.6-stable_win64.exe", "Godot_v4.6-stable_linux.x86_64"),
+        version: "4.6 Stable",
       ),
       SDKTask(
         name: "BLOCK",
         descriptionKey: "desc_block",
         iconPath: "assets/images/BLOCK_icon.png",
-        color: Colors.yellowAccent,
-        downloadUrl: isWin
-            ? "https://github.com/Amana-Games/BLOCK/releases/download/2026.2/BLOCK_Windows.zip"
-            : "https://github.com/Amana-Games/BLOCK/releases/download/2026.2/BLOCK_Linux.zip",
-        executablePath: isWin ? "BLOCK.exe" : "BLOCK",
+        color: const Color(0xFFEF4444), // Block Red
+        downloadUrl: getUrl(
+            "https://github.com/Amana-Games/BLOCK/releases/download/2026.2/BLOCK_Windows.zip",
+            "https://github.com/Amana-Games/BLOCK/releases/download/2026.2/BLOCK_Linux.zip"),
+        executablePath: getExe("BLOCK.exe", "BLOCK"),
+        version: "2026.2",
       ),
       SDKTask(
         name: "TRENCH",
         descriptionKey: "desc_trench",
         iconPath: "assets/images/TRENCH_icon.png",
-        color: Colors.orangeAccent,
-        downloadUrl: isWin
-            ? "https://github.com/Amana-Games/TRENCH/releases/download/v2026.2.3/TrenchBroom-Win64-AMD64-v2026.2.3-Release.zip"
-            : "https://github.com/Amana-Games/TRENCH/releases/download/v2026.2.3/TrenchBroom-Linux-x86_64-v2026.2.3-Release.zip",
-        executablePath: isWin ? "TRENCH.exe" : "TRENCH.AppImage",
+        color: const Color(0xFFF97316), // Trench Orange
+        downloadUrl: getUrl(
+            "https://github.com/Amana-Games/TRENCH/releases/download/v2026.2.3/TrenchBroom-Win64-AMD64-v2026.2.3-Release.zip",
+            "https://github.com/Amana-Games/TRENCH/releases/download/v2026.2.3/TrenchBroom-Linux-x86_64-v2026.2.3-Release.zip"),
+        executablePath: getExe("TRENCH.exe", "TRENCH.AppImage"),
+        version: "2026.2.3",
+      ),
+      SDKTask(
+        name: "BLENDER",
+        descriptionKey: "desc_blender",
+        iconPath: "assets/images/blender.png",
+        color: const Color(0xFFEA580C), // Blender Deep Orange
+        downloadUrl: getUrl(
+            "https://download.blender.org/release/Blender4.5/blender-4.5.6-windows-x64.zip",
+            "https://download.blender.org/release/Blender4.5/blender-4.5.6-linux-x64.tar.xz"),
+        executablePath: getExe("blender.exe", "blender"),
+        version: "4.5.6 LTS",
       ),
     ];
   }
 
   // Lógica de Execução
   void _launchApp(SDKTask task, {List<String> extraArgs = const []}) async {
+    if (!task.isInstalled && task.name != "Ainimonia") {
+      _showError("${task.name} is not installed. Please sync first.");
+      return;
+    }
+
     try {
       // 1. Ainimonia Task -> Launches GAME
       if (task.name == "Ainimonia") {
+        // Dependency Check for Ainimonia
+        final dependencies = tasks.where((t) => t.name != "Ainimonia");
+        if (dependencies.any((t) => !t.isInstalled)) {
+          _showError("Cannot launch Ainimonia: Some tools (Godot, Blender, etc.) are missing.");
+          return;
+        }
+
         final godotTask = tasks.firstWhere((t) => t.name == "GODOT");
         final godotExePath = p.join(
           rootPath,
@@ -128,13 +210,13 @@ class _HubScreenState extends State<HubScreen> {
           throw "Project not imported! Please open in GODOT (Editor) first to import assets.";
         }
 
-        // Clean args and launch
+        // Launch Game: --path "Ainimonia"
         final cleanArgs = extraArgs
             .where((a) => a != "." && a != "--path")
             .toList();
         await _syncService.launchTool(
           godotExePath,
-          args: ["--path", p.dirname(projectPath), ...cleanArgs],
+          args: ["--path", p.relative(projectDir, from: p.dirname(godotExePath)), ...cleanArgs],
         );
       }
       // 2. GODOT Task -> Launches EDITOR for Ainimonia
@@ -144,15 +226,29 @@ class _HubScreenState extends State<HubScreen> {
           throw "Godot executable not found at $godotExePath";
         }
 
-        final projectPath = p.join(rootPath, "Ainimonia", "project.godot");
+        final projectDir = p.join(rootPath, "Ainimonia");
 
-        // Launch with -e (Editor) flag pointing to project
+        // Launch Editor: --path "Ainimonia" -e
         await _syncService.launchTool(
           godotExePath,
-          args: ["--path", p.dirname(projectPath), "-e"],
+          args: ["--path", p.relative(projectDir, from: p.dirname(godotExePath)), "-e"],
         );
       }
-      // 3. Other Tools (BLOCK, TRENCH)
+      // 3. BLENDER Task
+      else if (task.name == "BLENDER") {
+        final blenderDir = p.join(rootPath, "BLENDER");
+        final blenderExe = await _syncService.findExecutable(
+          blenderDir, 
+          Platform.isWindows ? "blender.exe" : "blender"
+        );
+        
+        if (blenderExe == null) {
+          throw "Blender executable not found in $blenderDir";
+        }
+
+        await _syncService.launchTool(blenderExe, args: extraArgs);
+      }
+      // 4. Other Tools (BLOCK, TRENCH)
       else {
         // Direct Path: root/TASK/TASK.exe
         final taskDirName = task.name.toUpperCase();
@@ -179,6 +275,7 @@ class _HubScreenState extends State<HubScreen> {
         setState(() {
           task.isDownloading = true;
           task.isCompleted = false;
+          task.isInstalled = false; // Reset during sync
           task.progress = 0.0;
         });
         if (task.repoUrl != null && task.downloadUrl == null) {
@@ -202,9 +299,82 @@ class _HubScreenState extends State<HubScreen> {
           task.isCompleted = true;
         });
       }
+      
+      // Finalize Configuration (Injection)
+      setState(() {
+        for (var task in tasks) {
+           if (task.name == "GODOT" || task.name == "BLENDER") {
+              task.statusMessage = "Configuring Portability...";
+           }
+        }
+      });
+      await _syncService.finalizeStudioConfiguration(rootPath);
+      
+      setState(() {
+        for (var task in tasks) {
+          task.statusMessage = "Ready";
+        }
+      });
+      
+      // Re-check installation status
+      await _checkInstallationStatus();
       _updateDiskUsage();
     } catch (e) {
       _showError(e.toString());
+    } finally {
+      setState(() => isGlobalProcessing = false);
+    }
+  }
+
+  Future<void> _syncSingleTask(SDKTask task) async {
+    setState(() => isGlobalProcessing = true);
+    try {
+      setState(() {
+        task.isDownloading = true;
+        task.isCompleted = false;
+        task.isInstalled = false;
+        task.progress = 0.0;
+        task.statusMessage = "Cleaning...";
+      });
+
+      // Safe clean
+      final taskPath = p.join(rootPath, task.name.toUpperCase());
+      await _syncService.cleanForRedownload(taskPath, task.name);
+
+      if (task.repoUrl != null && task.downloadUrl == null) {
+        await _syncService.syncGit(
+          repoUrl: task.repoUrl!,
+          token: _tokenController.text,
+          rootPath: rootPath,
+          onStatus: (s) => setState(() => task.statusMessage = s),
+        );
+      } else if (task.downloadUrl != null) {
+        await _syncService.downloadAndInstall(
+          url: task.downloadUrl!,
+          rootPath: rootPath,
+          folderName: task.name,
+          onProgress: (p) => setState(() => task.progress = p),
+          onStatus: (s) => setState(() => task.statusMessage = s),
+        );
+      }
+
+      // Configuration check after specific tools
+      if (task.name == "GODOT" || task.name == "BLENDER") {
+        setState(() => task.statusMessage = "Configuring Portability...");
+        await _syncService.finalizeStudioConfiguration(rootPath);
+        setState(() => task.statusMessage = "Ready");
+      }
+
+      setState(() {
+        task.isDownloading = false;
+        task.isCompleted = true;
+        task.statusMessage = "Ready";
+      });
+
+      await _checkInstallationStatus();
+      _updateDiskUsage();
+    } catch (e) {
+      _showError("Sync failed for ${task.name}: $e");
     } finally {
       setState(() => isGlobalProcessing = false);
     }
@@ -217,6 +387,7 @@ class _HubScreenState extends State<HubScreen> {
       await prefs.setString('sdk_root_path', path);
       setState(() => rootPath = path);
       _updateDiskUsage();
+      await _checkInstallationStatus(); // Re-verify on path change
     }
   }
 
@@ -266,13 +437,18 @@ class _HubScreenState extends State<HubScreen> {
                   const SizedBox(height: 30),
                   Expanded(
                     child: _activeTab == 0
-                        ? StudioTab(tasks: tasks, onLaunch: _launchApp)
+                        ? StudioTab(
+                            tasks: tasks, 
+                            onLaunch: _launchApp,
+                            dependenciesReady: tasks.where((t) => t.name != "Ainimonia").every((t) => t.isInstalled),
+                          )
                         : _activeTab == 1
                         ? MaintenanceTab(
                             tasks: tasks,
                             rootPath: rootPath,
                             onSelectPath: _selectPath,
                             onSync: _runFullSync,
+                            onSyncTask: _syncSingleTask,
                             isSyncing: isGlobalProcessing,
                             isTokenValid: isTokenValid,
                           )
