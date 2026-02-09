@@ -1,0 +1,112 @@
+name: Amana SDK Hub CI
+on:
+  push:
+    tags:
+      - 'v*' # Dispara apenas ao subir tags (ex: v1.0.0)
+
+permissions:
+  contents: write
+
+jobs:
+  # --- BUILD WINDOWS ---
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Enable Desktop Support
+        run: flutter config --enable-windows-desktop
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Build Windows Release
+        run: flutter build windows --release
+
+      # O Flutter gera uma pasta com o .exe e dependências (data, dlls).
+      # Precisamos zipar o CONTEÚDO dessa pasta.
+      - name: Compress Release (Windows)
+        shell: pwsh
+        run: |
+          cd build/windows/x64/runner/Release
+          Compress-Archive -Path * -DestinationPath ..\..\..\..\..\AmanaSDK_Hub_Windows.zip
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: hub-windows
+          path: AmanaSDK_Hub_Windows.zip
+
+  # --- BUILD LINUX ---
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Instalação de dependências nativas obrigatórias para compilar Flutter no Linux
+      - name: Install Linux Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Enable Desktop Support
+        run: flutter config --enable-linux-desktop
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Build Linux Release
+        run: flutter build linux --release
+
+      # No Linux, o executável e a pasta 'data' ficam dentro de 'bundle'
+      - name: Compress Release (Linux)
+        run: |
+          cd build/linux/x64/release/bundle
+          zip -r ../../../../../AmanaSDK_Hub_Linux.zip .
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: hub-linux
+          path: AmanaSDK_Hub_Linux.zip
+
+  # --- CREATE RELEASE ---
+  release:
+    needs: [build-windows, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Windows Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: hub-windows
+          path: ./release-files
+
+      - name: Download Linux Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: hub-linux
+          path: ./release-files
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ./release-files/*.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
