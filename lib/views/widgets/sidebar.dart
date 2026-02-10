@@ -19,18 +19,33 @@ class Sidebar extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF020617),
         border: Border(
-            right: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
+          right: BorderSide(color: Colors.white.withValues(alpha: 0.05)),
+        ),
       ),
       child: Column(
         children: [
           const SizedBox(height: 40),
+          // Premium Floating App Logo
           Container(
-            padding: const EdgeInsets.all(12),
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            width: 64,
+            height: 64,
             decoration: BoxDecoration(
-              color: const Color(0xFF38BDF8).withValues(alpha: 0.1),
               shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
+                  blurRadius: 25,
+                  spreadRadius: 2,
+                ),
+              ],
             ),
-            child: const Icon(Icons.water_drop, color: Color(0xFF38BDF8)),
+            child: Image.asset(
+              'assets/images/app_icon.png',
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) =>
+                  const Icon(Icons.apps, color: Color(0xFF38BDF8), size: 32),
+            ),
           ),
           const SizedBox(height: 60),
           _SidebarItem(
@@ -53,8 +68,10 @@ class Sidebar extends StatelessWidget {
           const Spacer(),
           IconButton(
             onPressed: onSettings,
-            icon: Icon(Icons.settings,
-                color: Colors.white.withValues(alpha: 0.3)),
+            icon: Icon(
+              Icons.settings,
+              color: Colors.white.withValues(alpha: 0.3),
+            ),
             tooltip: "Settings",
           ),
           const SizedBox(height: 20),

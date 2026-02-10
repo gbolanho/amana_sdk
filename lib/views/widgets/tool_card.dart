@@ -63,23 +63,47 @@ class _ToolCardState extends State<ToolCard> {
                       ),
                     ),
                     SizedBox(height: isSmall ? 4 : 10),
-                    // Title
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        widget.task.name,
-                        style: TextStyle(
-                          fontSize: isSmall ? 16 : 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white.withValues(alpha: 0.9),
-                          shadows: [
-                            Shadow(
-                              blurRadius: 10,
-                              color: widget.task.color.withValues(alpha: 0.5),
+                    // Row for Title and Version
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            widget.task.name,
+                            style: TextStyle(
+                              fontSize: isSmall ? 16 : 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white.withValues(alpha: 0.9),
+                              shadows: [
+                                Shadow(
+                                  blurRadius: 10,
+                                  color: widget.task.color.withValues(alpha: 0.5),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
-                      ),
+                        if (!isSmall) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: widget.task.color.withValues(alpha: widget.task.color == Colors.white ? 0.05 : 0.1),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: widget.task.color.withValues(alpha: 0.3)),
+                            ),
+                            child: Text(
+                              widget.task.version,
+                              style: TextStyle(
+                                color: widget.task.color == Colors.white ? Colors.white70 : widget.task.color, 
+                                fontSize: 9, 
+                                fontWeight: FontWeight.bold
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     SizedBox(height: isSmall ? 2 : 5),
                     // Description

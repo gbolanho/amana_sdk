@@ -14,7 +14,7 @@ class SyncService {
     required Function(double) onProgress,
     required Function(String) onStatus,
   }) async {
-    // Força o nome da pasta para Maiúsculo
+    // Force folder name to Uppercase
     final upperFolder = folderName.toUpperCase();
     final destinationDir = Directory(p.join(rootPath, upperFolder));
     final zipPath = p.join(rootPath, "$upperFolder.zip");
@@ -34,23 +34,42 @@ class SyncService {
 
     onStatus("Extracting...");
     final bytes = File(zipPath).readAsBytesSync();
-    final archive = ZipDecoder().decodeBytes(bytes);
-
-    for (final file in archive) {
-      final filename = file.name;
-      final filePath = p.join(destinationDir.path, filename);
-      if (file.isFile) {
-        final data = file.content as List<int>;
-        File(filePath)
-          ..createSync(recursive: true)
-          ..writeAsBytesSync(data);
-      } else {
-        Directory(filePath).createSync(recursive: true);
+    
+    if (url.endsWith(".zip")) {
+      final archive = ZipDecoder().decodeBytes(bytes);
+      for (final file in archive) {
+        final filePath = p.join(destinationDir.path, file.name);
+        if (file.isFile) {
+          final data = file.content as List<int>;
+          File(filePath)
+            ..createSync(recursive: true)
+            ..writeAsBytesSync(data);
+        } else {
+          Directory(filePath).createSync(recursive: true);
+        }
+      }
+    } else if (url.endsWith(".tar.xz")) {
+      final tarBytes = XZDecoder().decodeBytes(bytes);
+      final archive = TarDecoder().decodeBytes(tarBytes);
+      for (final file in archive) {
+        final filePath = p.join(destinationDir.path, file.name);
+        if (file.isFile) {
+          final data = file.content as List<int>;
+          File(filePath)
+            ..createSync(recursive: true)
+            ..writeAsBytesSync(data);
+        } else if (file.isSymbolicLink) {
+          // Skip symlinks or handle them if needed. For now, skipping for simplicity.
+          print("[SyncService] Skipping symlink: ${file.name}");
+        } else {
+          Directory(filePath).createSync(recursive: true);
+        }
       }
     }
+
     if (File(zipPath).existsSync()) File(zipPath).deleteSync();
 
-    // Flattening: Se houver apenas uma pasta dentro e nada mais, movemos tudo para cima.
+    // Flattening: If there is only one nested folder, move its contents up.
     await _flattenDirectory(destinationDir);
 
     // Linux: Auto-apply permissions after extraction
@@ -79,7 +98,7 @@ class SyncService {
     onStatus("Ready");
   }
 
-  // Verifica se a extração criou uma subpasta desnecessária e move o conteúdo para cima
+  // Checks if extraction created an unnecessary subfolder and flattens it
   Future<void> _flattenDirectory(Directory dir) async {
     final entities = dir.listSync();
     if (entities.length == 1 && entities.first is Directory) {
@@ -99,7 +118,7 @@ class SyncService {
     }
   }
 
-  // Deleta tudo exceto as pastas de configuração (SC) para re-download seguro
+  // Delete everything except configuration folders (SC) for safe re-download
   Future<void> cleanForRedownload(String folderPath, String folderName) async {
     final dir = Directory(folderPath);
     if (!dir.existsSync()) return;
@@ -123,7 +142,7 @@ class SyncService {
     }
   }
 
-  // Localiza o executável real dentro de uma pasta (útil para pastas portable com subdiretórios)
+  // Locates the actual executable within a folder (useful for portable folders with subdirectories)
   Future<String?> findExecutable(String folderPath, String pattern) async {
     final dir = Directory(folderPath);
     if (!dir.existsSync()) return null;
@@ -148,13 +167,13 @@ class SyncService {
     return null;
   }
 
-  // Injeta o caminho do Blender nas configurações da Godot
+  // Injects the Blender path into Godot settings
   Future<void> finalizeStudioConfiguration(String rootPath) async {
     try {
       final godotDir = p.join(rootPath, "GODOT");
       final blenderDir = p.join(rootPath, "BLENDER");
       
-      // 1. Achar o executável do Blender
+      // 1. Locate the Blender executable
       final blenderExe = await findExecutable(
         blenderDir, 
         Platform.isWindows ? "blender.exe" : "blender"
@@ -165,44 +184,43 @@ class SyncService {
         return;
       }
 
-      // 2. Localizar (ou criar) o arquivo de configurações da Godot (modo SC usa editor_data/)
+      // 2. Locate (or create) Godot's configuration file (Self-Contained mode uses editor_data/)
       final configDir = Directory(p.join(godotDir, "editor_data"));
       if (!configDir.existsSync()) configDir.createSync(recursive: true);
       
-      // Regra de Injeção: editor_settings-4.x.tres
-      File configFile = File(p.join(configDir.path, "editor_settings-4.x.tres"));
+      // Injection Rule: editor_settings-4.6.tres (as per Godot 4.6 LTS structure)
+      File configFile = File(p.join(configDir.path, "editor_settings-4.6.tres"));
       
       String content = "";
-
       if (configFile.existsSync()) {
         content = await configFile.readAsString();
       } else {
-        // Template base se não existir
+        // Base template if it doesn't exist
         content = '[gd_resource type="EditorSettings" format=3]\n\n[resource]\n';
       }
 
-      // 3. Injetar ou atualizar o caminho do Blender
-      // Normaliza o caminho para formato Godot (slashes) e usa canonicalize
-      final normalizedBlenderPath = p.canonicalize(blenderExe).replaceAll("\\", "/");
-      final blenderSetting = 'filesystem/import/blender/blender_path = "$normalizedBlenderPath"';
+      // 3. Inject or update the Blender path
+      // Godot prefere caminhos com "/" mesmo no Windows.
+      final normalizedPath = p.canonicalize(blenderExe).replaceAll("\\", "/");
+      final settingLine = 'filesystem/import/blender/blender_path = "$normalizedPath"';
 
-      if (content.contains('filesystem/import/blender/blender_path')) {
+      final settingRegex = RegExp(r'^filesystem/import/blender/blender_path\s*=.*$', multiLine: true);
+
+      if (content.contains(settingRegex)) {
         // Substitui a linha existente
-        content = content.replaceFirst(
-          RegExp(r'filesystem/import/blender/blender_path = ".*"'), 
-          blenderSetting
-        );
+        content = content.replaceFirst(settingRegex, settingLine);
       } else {
-        // Adiciona ao final da seção [resource]
+        // Adiciona logo abaixo de [resource]
         if (content.contains('[resource]')) {
-           content = content.replaceFirst('[resource]', '[resource]\n$blenderSetting');
+           content = content.replaceFirst('[resource]', '[resource]\n$settingLine');
         } else {
-           content += "\n[resource]\n$blenderSetting";
+           // Fallback se o arquivo estiver zoado
+           content += "\n[resource]\n$settingLine\n";
         }
       }
 
       await configFile.writeAsString(content);
-      print("[SyncService] Blender path injected into Godot settings (${p.basename(configFile.path)}): $normalizedBlenderPath");
+      print("[SyncService] Configured Godot for Blender (LTS): $normalizedPath");
 
     } catch (e) {
       print("[SyncService] Error finalizing configuration: $e");
@@ -215,7 +233,7 @@ class SyncService {
     required String rootPath,
     required Function(String) onStatus,
   }) async {
-    // Pasta do projeto permanece como o nome do Repo (Ainimonia)
+    // Project folder remains as Repo name (Ainimonia)
     final projectPath = p.join(rootPath, "Ainimonia");
     final authUrl = repoUrl.replaceFirst("https://", "https://$token@");
 
@@ -230,7 +248,7 @@ class SyncService {
     onStatus("Ready");
   }
 
-  // Lança o executável com Abordagem Híbrida, Correção para Electron e Permissões Linux
+  // Launches executable with Hybrid Approach, Electron fixes, and Linux Permissions
   Future<void> launchTool(
     String fullPath, {
     List<String> args = const [],
@@ -247,15 +265,15 @@ class SyncService {
     print("[SyncService] CWD: $workingDir");
 
     try {
-      // 0. ESTRATÉGIA ESPECÍFICA: Linux (Permission Check)
+      // 0. SPECIFIC STRATEGY: Linux (Permission Check)
       if (Platform.isLinux) {
-        print("[SyncService] Linux detectado. Aplicando chmod +x...");
+        print("[SyncService] Linux detected. Applying chmod +x...");
         await Process.run('chmod', ['+x', cleanPath]);
       }
 
-      // 1. ESTRATÉGIA ESPECÍFICA: BLOCK (Electron Portability)
+      // 1. SPECIFIC STRATEGY: BLOCK (Electron Portability)
       if (fileName.toUpperCase().contains("BLOCK")) {
-        print("[SyncService] Detectado App Electron (BLOCK). Injetando portability data dir...");
+        print("[SyncService] Detected Electron App (BLOCK). Injecting portability data dir...");
         await Process.start(
           cleanPath,
           ['--user-data-dir=./data', '--no-sandbox', '--disable-gpu-compositing', ...args],
@@ -266,9 +284,9 @@ class SyncService {
         return;
       }
 
-      // 2. ESTRATÉGIA ESPECÍFICA: TRENCH (Environment Isolation)
+      // 2. SPECIFIC STRATEGY: TRENCH (Environment Isolation)
       if (fileName.toUpperCase().contains("TRENCH")) {
-        print("[SyncService] Detectado TRENCH. Isolando variáveis de ambiente...");
+        print("[SyncService] Detected TRENCH. Isolating environment variables...");
         final dataDir = p.join(workingDir, "data");
         if (!Directory(dataDir).existsSync()) Directory(dataDir).createSync(recursive: true);
 
@@ -290,7 +308,7 @@ class SyncService {
         return;
       }
 
-      // 3. ESTRATÉGIA PARA APPS SIMPLES (Sem argumentos)
+      // 3. STRATEGY FOR SIMPLE APPS (No arguments)
       if (args.isEmpty) {
         print("[SyncService] Using url_launcher (Shell Execute)...");
         final uri = Uri.file(cleanPath);
@@ -300,7 +318,7 @@ class SyncService {
         return;
       }
 
-      // 4. ESTRATÉGIA PARA APPS COMPLEXOS (GODOT, etc)
+      // 4. STRATEGY FOR COMPLEX APPS (GODOT, etc)
       print("[SyncService] Using Process.start (Detached)...");
       await Process.start(
         cleanPath,
@@ -315,7 +333,7 @@ class SyncService {
     }
   }
 
-  // Calcula tamanho total e detalhado
+  // Calculate total and detailed size
   Future<Map<String, int>> getDiskUsageBreakdown(String rootPath) async {
     final breakdown = <String, int>{};
     int total = 0;
@@ -333,7 +351,7 @@ class SyncService {
     return breakdown;
   }
 
-  // Calcula tamanho total da pasta (Recursivo)
+  // Calculate total folder size (Recursive)
   Future<int> getDirectorySize(Directory dir) async {
     int totalSize = 0;
     try {

@@ -80,7 +80,7 @@ class _HubScreenState extends State<HubScreen> {
         final projectDir = p.join(rootPath, "Ainimonia");
         installed = Directory(p.join(projectDir, ".git")).existsSync();
       } else {
-        // Agora o Blender está na raiz da pasta BLENDER, simplificando.
+        // Blender is now at the root of the BLENDER folder, simplifying things.
         final taskDir = p.join(rootPath, task.name.toUpperCase());
         final exe = await _syncService.findExecutable(
           taskDir,
@@ -95,6 +95,9 @@ class _HubScreenState extends State<HubScreen> {
         task.isCompleted = installed;
       });
     }
+
+    // After checking all, run a quick configuration finalize to ensure portability (paths injection)
+    await _syncService.finalizeStudioConfiguration(rootPath);
   }
 
   void _autoRedirectIfNeeded() {
@@ -183,7 +186,7 @@ class _HubScreenState extends State<HubScreen> {
     ];
   }
 
-  // Lógica de Execução
+  // Execution Logic
   void _launchApp(SDKTask task, {List<String> extraArgs = const []}) async {
     if (!task.isInstalled && task.name != "Ainimonia") {
       _showError("${task.name} is not installed. Please sync first.");
@@ -474,7 +477,7 @@ class _HubScreenState extends State<HubScreen> {
                             isSyncing: isGlobalProcessing,
                             isTokenValid: isTokenValid,
                           )
-                        : const SystemInfoTab(),
+                        : SystemInfoTab(rootPath: rootPath),
                   ),
                 ],
               ),
