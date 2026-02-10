@@ -331,8 +331,34 @@ class SyncService {
         return;
       }
 
-      // 3. STRATEGY FOR SIMPLE APPS (No arguments)
-      if (args.isEmpty) {
+      // 3. SPECIFIC STRATEGY: BLENDER (Environment isolation for portability)
+      if (fileName.toUpperCase().contains("BLENDER")) {
+        print("[SyncService] Detected BLENDER. Isolating environment variables...");
+        final configDir = p.join(workingDir, "config");
+        if (!Directory(configDir).existsSync()) Directory(configDir).createSync(recursive: true);
+
+        final env = Map<String, String>.from(Platform.environment);
+        // On Linux, Blender looks for config in $HOME/.config/blender
+        // But if we want it truly portable, we should point HOME to our folder.
+        if (Platform.isWindows) {
+          env['APPDATA'] = configDir;
+        } else {
+          env['HOME'] = workingDir; // Points to BLENDER/ folder
+        }
+
+        await Process.start(
+          cleanPath,
+          args,
+          workingDirectory: workingDir,
+          environment: env,
+          runInShell: Platform.isWindows,
+          mode: ProcessStartMode.detached,
+        );
+        return;
+      }
+
+      // 4. STRATEGY FOR SIMPLE APPS (No arguments)
+      if (args.isEmpty && !Platform.isLinux) {
         print("[SyncService] Using url_launcher (Shell Execute)...");
         final uri = Uri.file(cleanPath);
         if (!await launchUrl(uri)) {
@@ -341,13 +367,13 @@ class SyncService {
         return;
       }
 
-      // 4. STRATEGY FOR COMPLEX APPS (GODOT, etc)
+      // 5. STRATEGY FOR COMPLEX APPS OR LINUX (Direct Execute)
       print("[SyncService] Using Process.start (Detached)...");
       await Process.start(
         cleanPath,
         args,
         workingDirectory: workingDir,
-        runInShell: false,
+        runInShell: Platform.isWindows,
         mode: ProcessStartMode.detached,
       );
     } catch (e) {
