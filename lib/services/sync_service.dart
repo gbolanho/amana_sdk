@@ -24,16 +24,20 @@ class SyncService {
     }
 
     onStatus("Downloading...");
+    final extension = url.split('.').last == 'xz' ? 'tar.xz' : url.split('.').last;
+    final tempPath = p.join(rootPath, "$upperFolder.$extension");
+
     await _dio.download(
       url,
-      zipPath,
+      tempPath,
       onReceiveProgress: (received, total) {
         if (total != -1) onProgress(received / total);
       },
     );
 
     onStatus("Extracting...");
-    final bytes = File(zipPath).readAsBytesSync();
+    final tempFile = File(tempPath);
+    final bytes = tempFile.readAsBytesSync();
     
     if (url.endsWith(".zip")) {
       final archive = ZipDecoder().decodeBytes(bytes);
@@ -49,25 +53,44 @@ class SyncService {
         }
       }
     } else if (url.endsWith(".tar.xz")) {
-      final tarBytes = XZDecoder().decodeBytes(bytes);
-      final archive = TarDecoder().decodeBytes(tarBytes);
-      for (final file in archive) {
-        final filePath = p.join(destinationDir.path, file.name);
-        if (file.isFile) {
-          final data = file.content as List<int>;
-          File(filePath)
-            ..createSync(recursive: true)
-            ..writeAsBytesSync(data);
-        } else if (file.isSymbolicLink) {
-          // Skip symlinks or handle them if needed. For now, skipping for simplicity.
-          print("[SyncService] Skipping symlink: ${file.name}");
-        } else {
-          Directory(filePath).createSync(recursive: true);
+      // Prioritize native tar on Linux for better symlink and performance support
+      bool nativeTarSuccess = false;
+      if (Platform.isLinux) {
+        try {
+          print("[SyncService] Attempting native tar extraction on Linux...");
+          final result = await Process.run('tar', ['-xJf', tempPath, '-C', destinationDir.path]);
+          if (result.exitCode == 0) {
+            nativeTarSuccess = true;
+            print("[SyncService] Native tar extraction successful.");
+          } else {
+            print("[SyncService] Native tar failed: ${result.stderr}");
+          }
+        } catch (e) {
+          print("[SyncService] native tar command not found or failed: $e");
+        }
+      }
+
+      if (!nativeTarSuccess) {
+        print("[SyncService] Using Dart fallback for .tar.xz extraction...");
+        final tarBytes = XZDecoder().decodeBytes(bytes);
+        final archive = TarDecoder().decodeBytes(tarBytes);
+        for (final file in archive) {
+          final filePath = p.join(destinationDir.path, file.name);
+          if (file.isFile) {
+            final data = file.content as List<int>;
+            File(filePath)
+              ..createSync(recursive: true)
+              ..writeAsBytesSync(data);
+          } else if (file.isSymbolicLink) {
+            print("[SyncService] Skipping symlink in Dart fallback: ${file.name}");
+          } else {
+            Directory(filePath).createSync(recursive: true);
+          }
         }
       }
     }
 
-    if (File(zipPath).existsSync()) File(zipPath).deleteSync();
+    if (tempFile.existsSync()) tempFile.deleteSync();
 
     // Flattening: If there is only one nested folder, move its contents up.
     await _flattenDirectory(destinationDir);
