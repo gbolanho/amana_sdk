@@ -24,7 +24,9 @@ class SyncService {
     }
 
     onStatus("Downloading...");
-    final extension = url.split('.').last == 'xz' ? 'tar.xz' : url.split('.').last;
+    final extension = url.split('.').last == 'xz'
+        ? 'tar.xz'
+        : url.split('.').last;
     final tempPath = p.join(rootPath, "$upperFolder.$extension");
 
     await _dio.download(
@@ -38,7 +40,7 @@ class SyncService {
     onStatus("Extracting...");
     final tempFile = File(tempPath);
     final bytes = tempFile.readAsBytesSync();
-    
+
     if (url.endsWith(".zip")) {
       final archive = ZipDecoder().decodeBytes(bytes);
       for (final file in archive) {
@@ -58,7 +60,12 @@ class SyncService {
       if (Platform.isLinux) {
         try {
           print("[SyncService] Attempting native tar extraction on Linux...");
-          final result = await Process.run('tar', ['-xJf', tempPath, '-C', destinationDir.path]);
+          final result = await Process.run('tar', [
+            '-xJf',
+            tempPath,
+            '-C',
+            destinationDir.path,
+          ]);
           if (result.exitCode == 0) {
             nativeTarSuccess = true;
             print("[SyncService] Native tar extraction successful.");
@@ -82,7 +89,9 @@ class SyncService {
               ..createSync(recursive: true)
               ..writeAsBytesSync(data);
           } else if (file.isSymbolicLink) {
-            print("[SyncService] Skipping symlink in Dart fallback: ${file.name}");
+            print(
+              "[SyncService] Skipping symlink in Dart fallback: ${file.name}",
+            );
           } else {
             Directory(filePath).createSync(recursive: true);
           }
@@ -105,7 +114,9 @@ class SyncService {
       final scFile = File(p.join(destinationDir.path, "._sc_"));
       if (!scFile.existsSync()) {
         scFile.createSync();
-        print("[SyncService] Godot Self-Contained mode enabled (._sc_ created).");
+        print(
+          "[SyncService] Godot Self-Contained mode enabled (._sc_ created).",
+        );
       }
     }
 
@@ -114,7 +125,9 @@ class SyncService {
       final configDir = Directory(p.join(destinationDir.path, "config"));
       if (!configDir.existsSync()) {
         configDir.createSync(recursive: true);
-        print("[SyncService] Blender config folder created at ${configDir.path}");
+        print(
+          "[SyncService] Blender config folder created at ${configDir.path}",
+        );
       }
     }
 
@@ -126,8 +139,10 @@ class SyncService {
     final entities = dir.listSync();
     if (entities.length == 1 && entities.first is Directory) {
       final subDir = entities.first as Directory;
-      print("[SyncService] Flattening: Moving contents of ${p.basename(subDir.path)} to ${p.basename(dir.path)}");
-      
+      print(
+        "[SyncService] Flattening: Moving contents of ${p.basename(subDir.path)} to ${p.basename(dir.path)}",
+      );
+
       final subEntities = subDir.listSync();
       for (final entity in subEntities) {
         final newPath = p.join(dir.path, p.basename(entity.path));
@@ -147,7 +162,7 @@ class SyncService {
     if (!dir.existsSync()) return;
 
     final preserves = ['config', 'data', 'editor_data', '._sc_'];
-    
+
     final entities = dir.listSync();
     for (final entity in entities) {
       final name = p.basename(entity.path);
@@ -176,7 +191,10 @@ class SyncService {
 
     // Follow up with recursive search if not found at root
     try {
-      await for (final entity in dir.list(recursive: true, followLinks: false)) {
+      await for (final entity in dir.list(
+        recursive: true,
+        followLinks: false,
+      )) {
         if (entity is File) {
           final name = p.basename(entity.path);
           if (name.toLowerCase() == pattern.toLowerCase()) {
@@ -195,39 +213,48 @@ class SyncService {
     try {
       final godotDir = p.join(rootPath, "GODOT");
       final blenderDir = p.join(rootPath, "BLENDER");
-      
+
       // 1. Locate the Blender executable
       final blenderExe = await findExecutable(
-        blenderDir, 
-        Platform.isWindows ? "blender.exe" : "blender"
+        blenderDir,
+        Platform.isWindows ? "blender.exe" : "blender",
       );
-      
+
       if (blenderExe == null) {
-        print("[SyncService] Blender executable not found for configuration injection.");
+        print(
+          "[SyncService] Blender executable not found for configuration injection.",
+        );
         return;
       }
 
       // 2. Locate (or create) Godot's configuration file (Self-Contained mode uses editor_data/)
       final configDir = Directory(p.join(godotDir, "editor_data"));
       if (!configDir.existsSync()) configDir.createSync(recursive: true);
-      
+
       // Injection Rule: editor_settings-4.6.tres (as per Godot 4.6 LTS structure)
-      File configFile = File(p.join(configDir.path, "editor_settings-4.6.tres"));
-      
+      File configFile = File(
+        p.join(configDir.path, "editor_settings-4.6.tres"),
+      );
+
       String content = "";
       if (configFile.existsSync()) {
         content = await configFile.readAsString();
       } else {
         // Base template if it doesn't exist
-        content = '[gd_resource type="EditorSettings" format=3]\n\n[resource]\n';
+        content =
+            '[gd_resource type="EditorSettings" format=3]\n\n[resource]\n';
       }
 
       // 3. Inject or update the Blender path
       // Godot prefere caminhos com "/" mesmo no Windows.
       final normalizedPath = p.canonicalize(blenderExe).replaceAll("\\", "/");
-      final settingLine = 'filesystem/import/blender/blender_path = "$normalizedPath"';
+      final settingLine =
+          'filesystem/import/blender/blender_path = "$normalizedPath"';
 
-      final settingRegex = RegExp(r'^filesystem/import/blender/blender_path\s*=.*$', multiLine: true);
+      final settingRegex = RegExp(
+        r'^filesystem/import/blender/blender_path\s*=.*$',
+        multiLine: true,
+      );
 
       if (content.contains(settingRegex)) {
         // Substitui a linha existente
@@ -235,16 +262,20 @@ class SyncService {
       } else {
         // Adiciona logo abaixo de [resource]
         if (content.contains('[resource]')) {
-           content = content.replaceFirst('[resource]', '[resource]\n$settingLine');
+          content = content.replaceFirst(
+            '[resource]',
+            '[resource]\n$settingLine',
+          );
         } else {
-           // Fallback se o arquivo estiver zoado
-           content += "\n[resource]\n$settingLine\n";
+          // Fallback se o arquivo estiver zoado
+          content += "\n[resource]\n$settingLine\n";
         }
       }
 
       await configFile.writeAsString(content);
-      print("[SyncService] Configured Godot for Blender (LTS): $normalizedPath");
-
+      print(
+        "[SyncService] Configured Godot for Blender (LTS): $normalizedPath",
+      );
     } catch (e) {
       print("[SyncService] Error finalizing configuration: $e");
     }
@@ -296,10 +327,17 @@ class SyncService {
 
       // 1. SPECIFIC STRATEGY: BLOCK (Electron Portability)
       if (fileName.toUpperCase().contains("BLOCK")) {
-        print("[SyncService] Detected Electron App (BLOCK). Injecting portability data dir...");
+        print(
+          "[SyncService] Detected Electron App (BLOCK). Injecting portability data dir...",
+        );
         await Process.start(
           cleanPath,
-          ['--user-data-dir=./data', '--no-sandbox', '--disable-gpu-compositing', ...args],
+          [
+            '--user-data-dir=./data',
+            '--no-sandbox',
+            '--disable-gpu-compositing',
+            ...args,
+          ],
           workingDirectory: workingDir,
           runInShell: Platform.isWindows,
           mode: ProcessStartMode.detached,
@@ -309,9 +347,12 @@ class SyncService {
 
       // 2. SPECIFIC STRATEGY: TRENCH (Environment Isolation)
       if (fileName.toUpperCase().contains("TRENCH")) {
-        print("[SyncService] Detected TRENCH. Isolating environment variables...");
+        print(
+          "[SyncService] Detected TRENCH. Isolating environment variables...",
+        );
         final dataDir = p.join(workingDir, "data");
-        if (!Directory(dataDir).existsSync()) Directory(dataDir).createSync(recursive: true);
+        if (!Directory(dataDir).existsSync())
+          Directory(dataDir).createSync(recursive: true);
 
         final env = Map<String, String>.from(Platform.environment);
         if (Platform.isWindows) {
@@ -333,9 +374,12 @@ class SyncService {
 
       // 3. SPECIFIC STRATEGY: BLENDER (Environment isolation for portability)
       if (fileName.toUpperCase().contains("BLENDER")) {
-        print("[SyncService] Detected BLENDER. Isolating environment variables...");
+        print(
+          "[SyncService] Detected BLENDER. Isolating environment variables...",
+        );
         final configDir = p.join(workingDir, "config");
-        if (!Directory(configDir).existsSync()) Directory(configDir).createSync(recursive: true);
+        if (!Directory(configDir).existsSync())
+          Directory(configDir).createSync(recursive: true);
 
         final env = Map<String, String>.from(Platform.environment);
         // On Linux, Blender looks for config in $HOME/.config/blender
@@ -357,7 +401,34 @@ class SyncService {
         return;
       }
 
-      // 4. STRATEGY FOR SIMPLE APPS (No arguments)
+      // 4. SPECIFIC STRATEGY: MATMAKER (Environment isolation)
+      if (fileName.toUpperCase().contains("MATMAKER")) {
+        print(
+          "[SyncService] Detected MATMAKER. Isolating environment variables...",
+        );
+        final dataDir = p.join(workingDir, "data");
+        if (!Directory(dataDir).existsSync())
+          Directory(dataDir).createSync(recursive: true);
+
+        final env = Map<String, String>.from(Platform.environment);
+        if (Platform.isWindows) {
+          env['APPDATA'] = dataDir;
+        } else {
+          env['HOME'] = dataDir;
+        }
+
+        await Process.start(
+          cleanPath,
+          args,
+          workingDirectory: workingDir,
+          environment: env,
+          runInShell: Platform.isWindows,
+          mode: ProcessStartMode.detached,
+        );
+        return;
+      }
+
+      // 5. STRATEGY FOR SIMPLE APPS (No arguments)
       if (args.isEmpty && !Platform.isLinux) {
         print("[SyncService] Using url_launcher (Shell Execute)...");
         final uri = Uri.file(cleanPath);
@@ -367,7 +438,7 @@ class SyncService {
         return;
       }
 
-      // 5. STRATEGY FOR COMPLEX APPS OR LINUX (Direct Execute)
+      // 6. STRATEGY FOR COMPLEX APPS OR LINUX (Direct Execute)
       print("[SyncService] Using Process.start (Detached)...");
       await Process.start(
         cleanPath,
@@ -387,7 +458,14 @@ class SyncService {
     final breakdown = <String, int>{};
     int total = 0;
 
-    final folders = ['Ainimonia', 'GODOT', 'TRENCH', 'BLOCK', 'BLENDER'];
+    final folders = [
+      'AINIMONIA',
+      'GODOT',
+      'TRENCH',
+      'BLOCK',
+      'BLENDER',
+      'MATMAKER',
+    ];
 
     for (final folder in folders) {
       final dir = Directory(p.join(rootPath, folder));

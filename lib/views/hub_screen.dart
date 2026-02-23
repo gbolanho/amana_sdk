@@ -76,8 +76,8 @@ class _HubScreenState extends State<HubScreen> {
   Future<void> _checkInstallationStatus() async {
     for (var task in tasks) {
       bool installed = false;
-      if (task.name == "Ainimonia") {
-        final projectDir = p.join(rootPath, "Ainimonia");
+      if (task.name == "AINIMONIA") {
+        final projectDir = p.join(rootPath, "AINIMONIA");
         installed = Directory(p.join(projectDir, ".git")).existsSync();
       } else {
         // Blender is now at the root of the BLENDER folder, simplifying things.
@@ -125,7 +125,7 @@ class _HubScreenState extends State<HubScreen> {
 
     tasks = [
       SDKTask(
-        name: "Ainimonia",
+        name: "AINIMONIA",
         descriptionKey: "desc_project",
         iconPath: "assets/images/gameicon.png",
         color: Colors.white,
@@ -183,24 +183,36 @@ class _HubScreenState extends State<HubScreen> {
         executablePath: getExe("blender.exe", "blender"),
         version: "4.5.6 LTS",
       ),
+      SDKTask(
+        name: "MATMAKER",
+        descriptionKey: "desc_matmaker",
+        iconPath: "assets/images/matmaker.png",
+        color: const Color(0xFF8B5CF6), // Purple
+        downloadUrl: getUrl(
+          "https://github.com/Amana-Games/MATMAKER/releases/download/v2026.2.2/MATMAKER_v2026.2.2_windows.zip",
+          "https://github.com/Amana-Games/MATMAKER/releases/download/v2026.2.2/MATMAKER_v2026.2.2_linux.tar.gz",
+        ),
+        executablePath: getExe("MATMAKER.exe", "MATMAKER"),
+        version: "2026.2.2",
+      ),
     ];
   }
 
   // Execution Logic
   void _launchApp(SDKTask task, {List<String> extraArgs = const []}) async {
-    if (!task.isInstalled && task.name != "Ainimonia") {
+    if (!task.isInstalled && task.name != "AINIMONIA") {
       _showError("${task.name} is not installed. Please sync first.");
       return;
     }
 
     try {
-      // 1. Ainimonia Task -> Launches GAME
-      if (task.name == "Ainimonia") {
-        // Dependency Check for Ainimonia
-        final dependencies = tasks.where((t) => t.name != "Ainimonia");
+      // 1. AINIMONIA Task -> Launches GAME
+      if (task.name == "AINIMONIA") {
+        // Dependency Check for AINIMONIA
+        final dependencies = tasks.where((t) => t.name != "AINIMONIA");
         if (dependencies.any((t) => !t.isInstalled)) {
           _showError(
-            "Cannot launch Ainimonia: Some tools (Godot, Blender, etc.) are missing.",
+            "Cannot launch AINIMONIA: Some tools (Godot, Blender, etc.) are missing.",
           );
           return;
         }
@@ -216,7 +228,7 @@ class _HubScreenState extends State<HubScreen> {
           throw "Godot executable not found at $godotExePath";
         }
 
-        final projectDir = p.join(rootPath, "Ainimonia");
+        final projectDir = p.join(rootPath, "AINIMONIA");
         final projectPath = p.join(projectDir, "project.godot");
 
         // Validate Game Launch: Check for .godot folder
@@ -271,7 +283,18 @@ class _HubScreenState extends State<HubScreen> {
 
         await _syncService.launchTool(blenderExe, args: extraArgs);
       }
-      // 4. Other Tools (BLOCK, TRENCH)
+      // 4. MATMAKER Task
+      else if (task.name == "MATMAKER") {
+        final taskDirName = task.name.toUpperCase();
+        final exePath = p.join(rootPath, taskDirName, task.executablePath);
+
+        if (!await File(exePath).exists()) {
+          throw "${task.name} executable not found at $exePath";
+        }
+
+        await _syncService.launchTool(exePath, args: extraArgs);
+      }
+      // 5. Other Tools (BLOCK, TRENCH)
       else {
         // Direct Path: root/TASK/TASK.exe
         final taskDirName = task.name.toUpperCase();
@@ -298,9 +321,20 @@ class _HubScreenState extends State<HubScreen> {
         setState(() {
           task.isDownloading = true;
           task.isCompleted = false;
-          task.isInstalled = false; // Reset during sync
+          task.isInstalled = task.isInstalled; // Keep previous state for UI
           task.progress = 0.0;
         });
+
+        // Optimization: Skip download if already installed (except for AINIMONIA which is a Git Pull)
+        if (task.name != "AINIMONIA" && task.isInstalled) {
+          setState(() {
+            task.statusMessage = "Already installed. Skipping...";
+            task.isDownloading = false;
+            task.isCompleted = true;
+          });
+          continue;
+        }
+
         if (task.repoUrl != null && task.downloadUrl == null) {
           await _syncService.syncGit(
             repoUrl: task.repoUrl!,
@@ -326,7 +360,9 @@ class _HubScreenState extends State<HubScreen> {
       // Finalize Configuration (Injection)
       setState(() {
         for (var task in tasks) {
-          if (task.name == "GODOT" || task.name == "BLENDER") {
+          if (task.name == "GODOT" ||
+              task.name == "BLENDER" ||
+              task.name == "MATMAKER") {
             task.statusMessage = "Configuring Portability...";
           }
         }
@@ -464,7 +500,7 @@ class _HubScreenState extends State<HubScreen> {
                             tasks: tasks,
                             onLaunch: _launchApp,
                             dependenciesReady: tasks
-                                .where((t) => t.name != "Ainimonia")
+                                .where((t) => t.name != "AINIMONIA")
                                 .every((t) => t.isInstalled),
                           )
                         : _activeTab == 1
