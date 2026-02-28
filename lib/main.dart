@@ -1,11 +1,24 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:window_manager/window_manager.dart';
+
 import 'views/hub_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
+
+  // Cleanup old executables from previous updates
+  try {
+    final oldExe = File("${Platform.resolvedExecutable}.old");
+    if (oldExe.existsSync()) {
+      oldExe.deleteSync();
+      debugPrint("Cleaned up old executable: ${oldExe.path}");
+    }
+  } catch (e) {
+    debugPrint("Failed to cleanup old executable: $e");
+  }
 
   WindowOptions windowOptions = const WindowOptions(
     size: Size(1377, 937),

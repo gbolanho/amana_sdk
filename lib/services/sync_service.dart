@@ -351,8 +351,9 @@ class SyncService {
           "[SyncService] Detected TRENCH. Isolating environment variables...",
         );
         final dataDir = p.join(workingDir, "data");
-        if (!Directory(dataDir).existsSync())
+        if (!Directory(dataDir).existsSync()) {
           Directory(dataDir).createSync(recursive: true);
+        }
 
         final env = Map<String, String>.from(Platform.environment);
         if (Platform.isWindows) {
@@ -378,8 +379,9 @@ class SyncService {
           "[SyncService] Detected BLENDER. Isolating environment variables...",
         );
         final configDir = p.join(workingDir, "config");
-        if (!Directory(configDir).existsSync())
+        if (!Directory(configDir).existsSync()) {
           Directory(configDir).createSync(recursive: true);
+        }
 
         final env = Map<String, String>.from(Platform.environment);
         // On Linux, Blender looks for config in $HOME/.config/blender
@@ -407,8 +409,9 @@ class SyncService {
           "[SyncService] Detected MATMAKER. Isolating environment variables...",
         );
         final dataDir = p.join(workingDir, "data");
-        if (!Directory(dataDir).existsSync())
+        if (!Directory(dataDir).existsSync()) {
           Directory(dataDir).createSync(recursive: true);
+        }
 
         final env = Map<String, String>.from(Platform.environment);
         if (Platform.isWindows) {

@@ -48,6 +48,7 @@ dependencies:
   device_info_plus: ^12.3.0
   system_info_plus: ^0.0.6
   window_manager: ^0.4.3
+  package_info_plus: ^9.0.0
 
 dev_dependencies:
   flutter_test:

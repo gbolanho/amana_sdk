@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import '../models/sdk_task.dart';
 import '../services/localization_service.dart';
+import '../services/ouroboros_service.dart';
 import '../services/sync_service.dart';
 import 'settings_screen.dart';
 import 'tabs/studio_tab.dart';
@@ -27,8 +28,12 @@ class _HubScreenState extends State<HubScreen> {
   Map<String, int> usageData = {};
   final TextEditingController _tokenController = TextEditingController();
   final SyncService _syncService = SyncService();
+  final OuroborosService _ouroborosService = OuroborosService();
   bool isGlobalProcessing = false;
   bool isTokenValid = false;
+  Map<String, dynamic>? _pendingUpdate;
+  double _updateProgress = 0;
+  bool _isUpdating = false;
 
   late List<SDKTask> tasks;
 
@@ -40,6 +45,7 @@ class _HubScreenState extends State<HubScreen> {
     _tokenController.addListener(() {
       setState(() => isTokenValid = _tokenController.text.trim().isNotEmpty);
     });
+    _checkForAppUpdates();
   }
 
   Future<void> _loadSettings() async {
@@ -106,6 +112,93 @@ class _HubScreenState extends State<HubScreen> {
     if (!allReady && _activeTab == 0) {
       setState(() => _activeTab = 1);
       print("[HubScreen] Some tools missing. Redirecting to Maintenance...");
+    }
+  }
+
+  Future<void> _checkForAppUpdates() async {
+    final update = await _ouroborosService.checkForUpdate();
+    if (update != null) {
+      setState(() => _pendingUpdate = update);
+      _showUpdateDialog(update);
+    }
+  }
+
+  void _showUpdateDialog(Map<String, dynamic> update) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: Text(
+          "Update Available: ${update['version']}",
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          "A new version of AMANA SDK is available. Would you like to update now?",
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Later"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+            onPressed: () {
+              Navigator.pop(context);
+              _handleUpdate(update);
+            },
+            child: const Text("Update Now"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleUpdate(Map<String, dynamic> update) async {
+    setState(() {
+      _isUpdating = true;
+      _updateProgress = 0;
+    });
+
+    final downloadedPath = await _ouroborosService.downloadUpdate(
+      update['url'],
+      update['name'],
+      onProgress: (p) => setState(() => _updateProgress = p),
+    );
+
+    if (downloadedPath != null) {
+      // Show "Restarting" overlay
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(
+            child: Card(
+              color: Color(0xFF1E293B),
+              child: Padding(
+                padding: EdgeInsets.all(20.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 20),
+                    Text(
+                      "Applying Update & Restarting...",
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+      await Future.delayed(const Duration(seconds: 1));
+      await _ouroborosService.applyUpdate(downloadedPath);
+    } else {
+      setState(() => _isUpdating = false);
+      _showError("Update download failed.");
     }
   }
 
